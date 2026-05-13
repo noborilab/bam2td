@@ -151,7 +151,6 @@ static opts_t default_opts(void) {
 static void usage(FILE *out) {
   fprintf(out,
 "bam2td " BAM2TD_VERSION " - HOMER tag directory from BAM/SAM/CRAM\n"
-"Copyright (C) " BAM2TD_YEAR "  Benjamin Jean-Marie Tremblay\n"
 "\n"
 "Usage:\n"
 "  bam2td <output-dir> <input.bam|sam|cram> [options]\n"
@@ -187,6 +186,57 @@ static int parse_int(const char *flag, const char *s) {
   long v = strtol(s, &end, 10);
   if (end == NULL || *end != '\0') quit("Invalid integer for %s: %s", flag, s);
   return (int) v;
+}
+
+// HOMER makeTagDirectory flags that bam2td recognises only so it can warn
+// and skip them — the user may have copied a makeTagDirectory command and
+// pasted it as-is. n_args = number of value arguments to consume after the
+// flag (-1 means "variadic", consume until the next - argument).
+typedef struct homer_flag {
+  const char *name;
+  int         n_args;
+} homer_flag_t;
+
+static const homer_flag_t HOMER_IGNORED[] = {
+  // bool flags
+  { "-keep",                   0 }, { "-mask",                  0 },
+  { "-update",                 0 }, { "-C",                     0 },
+  { "-forceBED",               0 }, { "-assignMidPoint",        0 },
+  { "-directional",            0 }, { "-force5th",              0 },
+  { "-chrOnly",                0 }, { "-illuminaPE",            0 },
+  { "-bowtiePE",               0 }, { "-checkGC",               0 },
+  { "-removePEbg",             0 }, { "-removeSelfLigation",    0 },
+  { "-removeRestrictionEnds",  0 }, { "-both",                  0 },
+  { "-one",                    0 }, { "-onlyOne",               0 },
+  { "-none",                   0 },
+  // 1-arg flags
+  { "-totalReads",             1 }, { "-normGC",                1 },
+  { "-normLength",             1 }, { "-normOligo",             1 },
+  { "-mCcontext",              1 }, { "-oligoStart",            1 },
+  { "-oligoEnd",               1 }, { "-restrictionSiteLength", 1 },
+  { "-minCounts",              1 }, { "-PEbgLength",            1 },
+  { "-normFixedOligo",         1 }, { "-rsmis",                 1 },
+  { "-freqStart",              1 }, { "-freqEnd",               1 },
+  { "-iterNorm",               1 }, { "-minNormRatio",          1 },
+  { "-maxNormRatio",           1 }, { "-restrictionSite",       1 },
+  { "-name",                   1 }, { "-len",                   1 },
+  { "-fragLength",             1 }, { "-format",                1 },
+  // 2-arg flag
+  { "-removeSpikes",           2 },
+  // 3-arg flag
+  { "-filterReads",            3 },
+  // variadic
+  { "-d",                     -1 }, { "-t",                    -1 },
+};
+
+#define HOMER_IGNORED_N (sizeof(HOMER_IGNORED) / sizeof(HOMER_IGNORED[0]))
+
+// Return n_args (>=0), -1 for variadic, or -2 if `flag` is unknown.
+static int homer_ignored_lookup(const char *flag) {
+  for (size_t k = 0; k < HOMER_IGNORED_N; k++) {
+    if (strcmp(flag, HOMER_IGNORED[k].name) == 0) return HOMER_IGNORED[k].n_args;
+  }
+  return -2;
 }
 
 static void parse_args(int argc, char **argv, opts_t *opts) {
@@ -238,7 +288,21 @@ static void parse_args(int argc, char **argv, opts_t *opts) {
     else   if (!strcmp(a, "-keepQCfail")) opts->keep_qcfail = true;
     else   if (!strcmp(a, "-v"))          opts->v          = true;
     else if (a[0] == '-' && a[1] != '\0') {
-      quit("Unknown option: %s (try -h).", a);
+      // Recognize HOMER makeTagDirectory flags we don't implement and skip
+      // them with a warning, including any value arguments they consume.
+      int n = homer_ignored_lookup(a);
+      if (n >= 0) {
+        warn("HOMER flag '%s' is not implemented by bam2td; ignoring.", a);
+        for (int k = 0; k < n; k++) {
+          if (i + 1 >= argc) break;
+          i++;
+        }
+      } else if (n == -1) {
+        warn("HOMER flag '%s' is not implemented by bam2td; ignoring its values too.", a);
+        while (i + 1 < argc && argv[i + 1][0] != '-') i++;
+      } else {
+        quit("Unknown option: %s (try -h).", a);
+      }
     } else {
       // Positionals, in order: <output-dir> <input.bam>.
       if (opts->output_dir == NULL)      opts->output_dir = a;

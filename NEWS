@@ -1,0 +1,49 @@
+CHANGES IN VERSION 0.1.1 (2026-05-13)
+-------------------------------------
+
+* HOMER `makeTagDirectory` flags that bam2td does not implement are now
+  recognised by the argument parser and skipped with a warning, including
+  any value arguments they would consume in HOMER. This lets a user paste
+  an existing makeTagDirectory command and have bam2td run with whatever
+  it understands, instead of hard-erroring on the first unsupported flag.
+  Genuinely unknown flags (not present in HOMER either) still hard-error.
+
+* When `-v` is set, the "Wrote tag directory ..." trailer prints the tag
+  count with comma-separated thousands.
+
+* Added a synthetic test suite covering argument handling, SE/PE output,
+  per-(pos, strand, length) line splitting, filter flags, strand and
+  length transforms, `tagInfo.txt` layout, multi-chromosome behaviour,
+  and the new HOMER-flag warn-and-skip path. Runnable via `make test`.
+
+
+CHANGES IN VERSION 0.1.0 (2026-05-13)
+-------------------------------------
+
+* Initial release. Reads coordinate-sorted BAM/SAM/CRAM via htslib and
+  writes a HOMER-compatible tag directory (per-chromosome `*.tags.tsv`,
+  optional `petag.tsv`, `tagInfo.txt`) that downstream HOMER tools
+  consume directly. `chr*.tags.tsv` files are byte-identical to
+  `makeTagDirectory` output. `tagInfo.txt` matches HOMER's layout —
+  column-header row, summary row, key=value metadata, three-column
+  per-chromosome rows, and a `cmd=` trailer — except for the
+  autocorrelation-derived `fragmentLengthEstimate` / `peakSizeEstimate`
+  values, which require the autocorrelation pass that is not implemented
+  in this release. `gsizeEstimate` mirrors HOMER's `appearentSize`
+  accounting (sum of the largest emitted tag position per chromosome).
+
+* Supported flags: `-genome`, `-mapq`, `-minlen`, `-maxlen`, `-tbp`,
+  `-precision`, `-mis`, `-flip`, `-sspe`, `-single`, `-rmsoft`,
+  `-omitSN`, `-keepAll`, `-keepOne`, `-unique`, `-read1`, `-read2`,
+  `-keepDup`, `-keepQCfail`, `-p`, `-v`.
+
+* Positional argument order matches HOMER's `makeTagDirectory`:
+  `bam2td <output-dir> <input.bam|sam|cram> [options]`.
+
+* When `-v` is set, the program prints elapsed time and peak resident
+  memory at the end.
+
+* Build mirrors quaqc: vendored htslib and zlib source trees under
+  `libs/` are built as static archives and linked into the binary.
+  `make release-full` builds the libraries from source first;
+  `hts_dyn=1` / `z_dyn=1` opts into system shared libraries.

@@ -68,14 +68,14 @@ assert_file_absent() {
 
 assert_contains() {
   local file="$1" pattern="$2"
-  if grep -qF "$pattern" "$file"; then return 0; fi
+  if grep -qF -e "$pattern" "$file"; then return 0; fi
   echo "  assert_contains: '$pattern' not in $file" >&2
   return 1
 }
 
 assert_not_contains() {
   local file="$1" pattern="$2"
-  if ! grep -qF "$pattern" "$file"; then return 0; fi
+  if ! grep -qF -e "$pattern" "$file"; then return 0; fi
   echo "  assert_not_contains: '$pattern' unexpectedly in $file" >&2
   return 1
 }
@@ -162,6 +162,39 @@ test_unknown_flag_rejected() {
   { chr_header chr1 1000; se_read r1 chr1 100 50; } | make_bam "$d/in.bam"
   if "$BAM2TD" --not-a-real-flag "$d/td" "$d/in.bam" 2>/dev/null; then return 1; fi
   return 0
+}
+
+test_homer_bool_flag_warns_and_runs() {
+  local d="$1"
+  { chr_header chr1 1000; se_read r1 chr1 100 50; } | make_bam "$d/in.bam"
+  "$BAM2TD" -checkGC "$d/td" "$d/in.bam" 2>"$d/err" >/dev/null || return 1
+  assert_contains "$d/err" 'HOMER flag' || return 1
+  assert_contains "$d/err" '-checkGC'   || return 1
+  assert_file_exists "$d/td/chr1.tags.tsv"
+}
+
+test_homer_oneArg_flag_consumes_value() {
+  local d="$1"
+  { chr_header chr1 1000; se_read r1 chr1 100 50; } | make_bam "$d/in.bam"
+  # -format takes one arg ('sam'). After the warn-and-skip, the next
+  # positional is "$d/td" — i.e. 'sam' must NOT be treated as the output dir.
+  "$BAM2TD" -format sam "$d/td" "$d/in.bam" 2>"$d/err" >/dev/null || return 1
+  assert_contains   "$d/err" '-format'              || return 1
+  assert_file_exists "$d/td/chr1.tags.tsv"          || return 1
+  # Defensive: no directory named 'sam' should have been created.
+  if [ -d sam ]; then echo "  unexpected ./sam dir created"; rm -rf sam; return 1; fi
+}
+
+test_homer_variadic_flag_then_supported_flag() {
+  local d="$1"
+  { chr_header chr1 1000
+    se_read hi chr1 100 50 42        # MAPQ 42
+    se_read lo chr1 200 50 5         # MAPQ  5
+  } | make_bam "$d/in.bam"
+  # -d a b c is variadic; after the warning we should still see -mapq 30.
+  "$BAM2TD" -d a b c -mapq 30 "$d/td" "$d/in.bam" 2>"$d/err" >/dev/null || return 1
+  assert_contains "$d/err" "-d" || return 1
+  assert_lines    "$d/td/chr1.tags.tsv" 1
 }
 
 test_read1_read2_mutex() {
@@ -611,6 +644,9 @@ ALL=(
   missing_args_errors
   old_o_flag_rejected
   unknown_flag_rejected
+  homer_bool_flag_warns_and_runs
+  homer_oneArg_flag_consumes_value
+  homer_variadic_flag_then_supported_flag
   read1_read2_mutex
   unsorted_input_rejected
   missing_input_errors
