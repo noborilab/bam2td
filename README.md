@@ -11,6 +11,12 @@ chromosome boundary, and emitted as collapsed runs — one line per unique
 `(pos, strand, length)` tuple, matching HOMER's `makeTagDirectory` output
 layout exactly.
 
+It is **not** intended to be a feature-complete replacement; only the bare
+essential files are created. HOMER `tagAutocorrelation.txt`,
+`tagLengthDistribution.txt`, `tagCountDistribution.txt`, and `tagGCcontent.txt`
+files are not produced. Run `makeTagDirectory <tagdir> -udpate -checkGC -genome <genome>`
+afterwards to complete the tag directory.
+
 ## Build
 
 Vendored htslib and zlib source trees live under `libs/`, are built as static
@@ -47,7 +53,8 @@ bam2td <tagdir> <input.bam|sam|cram> [options]
 ```
 
 The input must be coordinate-sorted (`@HD SO:coordinate` in the header);
-otherwise the tool refuses to run.
+otherwise the tool refuses to run. Program arguments mirror that of
+`makeTagDirectory`.
 
 ### Options
 
@@ -149,6 +156,3 @@ data), not the sum of `@SQ LN:` lengths.
   whole genome never sits in RAM. As a rough yardstick, ~63M tags on the
   deepest chromosome corresponds to ~2 GB peak RSS; typical ChIP-seq /
   ATAC-seq / csRNA-seq workloads land well under 100 MB.
-- HOMER `tagAutocorrelation.txt`, `tagLengthDistribution.txt`,
-  `tagCountDistribution.txt`, and `tagGCcontent.txt` are not produced.
-  Downstream HOMER tools generate these on first invocation when missing.
