@@ -24,12 +24,12 @@ CHANGES IN VERSION 0.1.0 (2026-05-13)
   writes a HOMER-compatible tag directory (per-chromosome `*.tags.tsv`,
   optional `petag.tsv`, `tagInfo.txt`) that downstream HOMER tools
   consume directly. `chr*.tags.tsv` files are byte-identical to
-  `makeTagDirectory` output. `tagInfo.txt` matches HOMER's layout —
+  `makeTagDirectory` output. `tagInfo.txt` matches HOMER's layout (the
   column-header row, summary row, key=value metadata, three-column
-  per-chromosome rows, and a `cmd=` trailer — except for the
-  autocorrelation-derived `fragmentLengthEstimate` / `peakSizeEstimate`
-  values, which require the autocorrelation pass that is not implemented
-  in this release. `gsizeEstimate` mirrors HOMER's `appearentSize`
+  per-chromosome rows, and a `cmd=` trailer), with the exception of the
+  autocorrelation-derived `fragmentLengthEstimate` and `peakSizeEstimate`
+  values, which need the autocorrelation pass that this release does not
+  yet implement. `gsizeEstimate` mirrors HOMER's `appearentSize`
   accounting (sum of the largest emitted tag position per chromosome).
 
 * Supported flags: `-genome`, `-mapq`, `-minlen`, `-maxlen`, `-tbp`,

@@ -189,8 +189,8 @@ static int parse_int(const char *flag, const char *s) {
 }
 
 // HOMER makeTagDirectory flags that bam2td recognises only so it can warn
-// and skip them — the user may have copied a makeTagDirectory command and
-// pasted it as-is. n_args = number of value arguments to consume after the
+// and skip them, since the user may have copied a makeTagDirectory command
+// and pasted it as-is. n_args = number of value arguments to consume after the
 // flag (-1 means "variadic", consume until the next - argument).
 typedef struct homer_flag {
   const char *name;
@@ -430,8 +430,9 @@ static bool compute_tag(const bam1_t *b, const opts_t *opts, tag_t *out) {
   if (opts->flip)                                strand ^= 1;
 
   // PE: fragment leftmost coord == b->core.pos (always sorted in coord-sorted
-  // input). SE: 5' end of the read — for - strand reads that is bam_endpos-1,
-  // which can land out of order vs adjacent + reads, so the chr stream sorts
+  // input). SE: 5' end of the read, and for - strand reads that is
+  // bam_endpos-1, which can land out of order vs adjacent + reads, so the chr
+  // stream sorts
   // per chromosome before emitting.
   hts_pos_t pos = b->core.pos;
   if (!pe_mode && is_rev(b)) {

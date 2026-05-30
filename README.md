@@ -1,26 +1,28 @@
 # bam2td
 
-Standalone replacement for HOMER's `makeTagDirectory` when the input is a
-BAM/SAM/CRAM file. Reads coordinate-sorted alignments via htslib and writes
-a tag directory that downstream HOMER tools (`findPeaks`, `annotatePeaks.pl`,
-`analyzeRepeats.pl`, ...) can consume directly.
+`bam2td` is a small standalone tool that stands in for HOMER's
+`makeTagDirectory` when the input you happen to have is a BAM/SAM/CRAM file.
+It reads coordinate-sorted alignments through htslib and writes out a tag
+directory that the downstream HOMER tools (`findPeaks`, `annotatePeaks.pl`,
+`analyzeRepeats.pl`, and so on) can consume directly.
 
-The implementation is single-pass and never holds the whole file in RAM.
-Tags are buffered per chromosome, sorted by `(pos, strand, length)` at each
-chromosome boundary, and emitted as collapsed runs — one line per unique
-`(pos, strand, length)` tuple, matching HOMER's `makeTagDirectory` output
-layout exactly.
+It works in a single pass and never holds the whole file in memory at once.
+Tags are buffered one chromosome at a time, sorted by `(pos, strand, length)`
+at each chromosome boundary, and then written out as collapsed runs (one line
+per unique `(pos, strand, length)` tuple), which is exactly the layout
+`makeTagDirectory` produces.
 
-It is **not** intended to be a feature-complete replacement; only the bare
-essential files are created. HOMER `tagAutocorrelation.txt`,
-`tagLengthDistribution.txt`, `tagCountDistribution.txt`, and `tagGCcontent.txt`
-files are not produced. Run `makeTagDirectory <tagdir> -udpate -checkGC -genome <genome>`
-afterwards to complete the tag directory.
+It isn't meant to be a feature-complete replacement, to be honest; only the
+bare essential files get created. In particular the HOMER
+`tagAutocorrelation.txt`, `tagLengthDistribution.txt`,
+`tagCountDistribution.txt`, and `tagGCcontent.txt` files are not produced. If
+you do need those, running `makeTagDirectory <tagdir> -update -checkGC -genome <genome>`
+afterwards will fill the rest of the tag directory in.
 
 ## Build
 
-Vendored htslib and zlib source trees live under `libs/`, are built as static
-archives, and linked into the final binary.
+The htslib and zlib source trees are vendored under `libs/`; they get built as
+static archives and linked straight into the final binary.
 
 ```sh
 # Default release build (statically links libs/htslib/libhts.a and libs/zlib/libz.a)
@@ -42,9 +44,10 @@ make release native=1
 make release-full with_curl=1 with_bz2=1 with_lzma=1
 ```
 
-`make release` expects `libs/htslib/libhts.a` and `libs/zlib/libz.a` to
-already exist. Use `make release-full` to build them from the bundled
-sources, or pass `hts_dyn=1` / `z_dyn=1` to use the system libraries.
+`make release` expects `libs/htslib/libhts.a` and `libs/zlib/libz.a` to be
+there already. If they aren't, `make release-full` builds them from the
+bundled sources first, and passing `hts_dyn=1` / `z_dyn=1` links against the
+system libraries instead.
 
 ## Usage
 
@@ -52,9 +55,10 @@ sources, or pass `hts_dyn=1` / `z_dyn=1` to use the system libraries.
 bam2td <tagdir> <input.bam|sam|cram> [options]
 ```
 
-The input must be coordinate-sorted (`@HD SO:coordinate` in the header);
-otherwise the tool refuses to run. Program arguments mirror that of
-`makeTagDirectory`.
+The input has to be coordinate-sorted (`@HD SO:coordinate` in the header); if
+it isn't, the tool refuses to run rather than quietly produce something wrong.
+The argument order and the option names mirror `makeTagDirectory`, so for the
+most part an existing command should carry over.
 
 ### Options
 
@@ -85,28 +89,29 @@ otherwise the tool refuses to run. Program arguments mirror that of
 
 ### Behaviour notes
 
-- **Paired-end handling.** When the alignment is flagged
-  `BAM_FPROPER_PAIR | BAM_FPAIRED` and the mate maps to the same reference
-  with a nonzero TLEN, the leftmost mate is emitted as a single fragment
-  tag (`pos = b->core.pos`, `len = abs(isize)`, `strand = strand of the
-  leftmost mate`), and the rightmost mate is dropped. Improper pairs,
-  chimeric reads, and mate-unmapped reads fall back to single-end treatment
-  (each emitted at its own 5' end). `-single` forces SE treatment for the
-  entire file.
-- **Filters.** By default `BAM_FUNMAP`, `BAM_FQCFAIL`, `BAM_FDUP`, and
-  non-primary alignments (`BAM_FSECONDARY | BAM_FSUPPLEMENTARY`) are
-  skipped. `-keepDup`, `-keepQCfail`, `-keepAll` opt back in. `-mapq`
-  filters on `b->core.qual`; `-mis` reads `NM:i`; `-unique` requires
-  `NH:i==1` when present.
+- **Paired-end handling.** When an alignment is flagged
+  `BAM_FPROPER_PAIR | BAM_FPAIRED` and its mate maps to the same reference
+  with a nonzero TLEN, the leftmost mate is emitted as a single fragment tag
+  (`pos = b->core.pos`, `len = abs(isize)`, with the strand taken from the
+  leftmost mate) and the rightmost mate is dropped. Improper pairs, chimeric
+  reads, and mate-unmapped reads all fall back to single-end treatment (each
+  emitted at its own 5' end). `-single` forces SE treatment for the whole
+  file.
+- **Filters.** By default `BAM_FUNMAP`, `BAM_FQCFAIL`, `BAM_FDUP`, and the
+  non-primary alignments (`BAM_FSECONDARY | BAM_FSUPPLEMENTARY`) are skipped;
+  `-keepDup`, `-keepQCfail`, and `-keepAll` opt back in. `-mapq` filters on
+  `b->core.qual`, `-mis` reads `NM:i`, and `-unique` requires `NH:i==1`
+  wherever it is present.
 - **Length.** For SE reads the default tag length is the read length
-  (`b->core.l_qseq`). `-rmsoft` drops leading and trailing soft-clipped
-  bases. For PE-rep tags the length is `abs(isize)` and is unaffected by
-  `-rmsoft`.
-- **Strand.** Forward reads are strand `0`, reverse `1`. `-flip` inverts
-  every read; `-sspe` additionally inverts R2 inside a proper pair.
-- **`-tbp`** caps the number of reads collapsed into one
-  `(pos, strand, length)` bucket. The cap applies to both `chr*.tags.tsv`
-  and `petag.tsv`.
+  (`b->core.l_qseq`), and `-rmsoft` drops the leading and trailing
+  soft-clipped bases. For PE-rep tags the length is `abs(isize)`, which
+  `-rmsoft` does not touch.
+- **Strand.** Forward reads are strand `0` and reverse reads strand `1`.
+  `-flip` inverts every read, and `-sspe` additionally inverts R2 inside a
+  proper pair.
+- **`-tbp`** caps how many reads get collapsed into a single
+  `(pos, strand, length)` bucket (the cap applies to both `chr*.tags.tsv` and
+  `petag.tsv`).
 
 ## Output
 
@@ -116,43 +121,45 @@ otherwise the tool refuses to run. Program arguments mirror that of
 <tagdir>/tagInfo.txt        summary header consumed by HOMER
 ```
 
-Each `<chr>.tags.tsv` and `petag.tsv` line has a leading tab (HOMER's
-convention so the chromosome column lands in field 2) followed by five
-fields:
+Each `<chr>.tags.tsv` and `petag.tsv` line starts with a leading tab (this is
+HOMER's convention, so that the chromosome column lands in field 2), followed
+by five fields:
 
 ```
 \t<chr>\t<1-based pos>\t<strand>\t<count>\t<length>
 ```
 
-One line per unique `(pos, strand, length)` tuple, sorted by position
+There is one line per unique `(pos, strand, length)` tuple, sorted by position
 within each chromosome.
 
 `tagInfo.txt` mirrors HOMER's layout:
 
-1. Header row: `name\tUnique Positions\tTotal Tags`
+1. Header row: `name\tUnique Positions\tTotal Tags`.
 2. Summary row: `<genome>\t<total unique>\t<total tags>` (the first cell is
-   `genome=<name>` if `-genome` was supplied, otherwise the bare literal
+   `genome=<name>` if `-genome` was supplied, otherwise just the bare literal
    `genome`).
-3. `key=value` metadata lines for `fragmentLengthEstimate`, `peakSizeEstimate`,
-   `tagsPerBP`, `averageTagsPerPosition`, `medianTagsPerPosition`,
-   `averageTagLength`, `gsizeEstimate`, `averageFragmentGCcontent`. Each is
-   right-padded with two trailing tabs to keep three "columns".
+3. `key=value` metadata lines for `fragmentLengthEstimate`,
+   `peakSizeEstimate`, `tagsPerBP`, `averageTagsPerPosition`,
+   `medianTagsPerPosition`, `averageTagLength`, `gsizeEstimate`, and
+   `averageFragmentGCcontent`. Each one is right-padded with two trailing tabs
+   to keep the three "columns" lined up.
 4. Per-chromosome rows: `<chr>\t<unique positions>\t<total tags>`.
-5. `cmd=<full command line>` trailer.
+5. A `cmd=<full command line>` trailer.
 
-`gsizeEstimate` mirrors HOMER's `appearentSize` accounting: the sum of the
-largest tag position emitted on each chromosome (i.e. the right edge of the
-data), not the sum of `@SQ LN:` lengths.
+One thing worth noting (since it is easy to assume otherwise):
+`gsizeEstimate` follows HOMER's `appearentSize` accounting, which is the sum
+of the largest tag position emitted on each chromosome (the right edge of the
+data, in other words), rather than the sum of the `@SQ LN:` lengths.
 
 ## Limitations
 
-- Requires coordinate-sorted input. Pipe through `samtools sort` if
-  needed.
-- CRAM input needs a reference; configure `REF_PATH`/`REF_CACHE` per
-  htslib conventions.
-- Memory cost is one `tag_t` (~32 bytes, including buffer-doubling
-  overhead) per pre-collapse passing read on the *largest* chromosome —
-  the buffer is freed and reallocated on each chromosome boundary, so the
-  whole genome never sits in RAM. As a rough yardstick, ~63M tags on the
-  deepest chromosome corresponds to ~2 GB peak RSS; typical ChIP-seq /
-  ATAC-seq / csRNA-seq workloads land well under 100 MB.
+- The input has to be coordinate-sorted; pipe it through `samtools sort`
+  first if it isn't.
+- CRAM input needs a reference, so you will want to set `REF_PATH` /
+  `REF_CACHE` per the usual htslib conventions.
+- Memory cost is roughly one `tag_t` (~32 bytes, including the buffer-doubling
+  overhead) per pre-collapse passing read on the *largest* chromosome. Because
+  the buffer is freed and reallocated at each chromosome boundary, the whole
+  genome never sits in RAM at once. As a rough yardstick, ~63M tags on the
+  deepest chromosome works out to ~2 GB peak RSS, while typical ChIP-seq,
+  ATAC-seq, and csRNA-seq workloads land comfortably under 100 MB.
